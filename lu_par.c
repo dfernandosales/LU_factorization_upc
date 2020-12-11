@@ -3,10 +3,12 @@
 #include <stdlib.h>
 #include <time.h>
 #include <omp.h>
+#include <unistd.h>
 #include <upc_relaxed.h>
 #include <upc.h>
 
 shared[] double *m;
+int matrix_size;
 
 void lu_fat(shared[] double *A, long n)
 {
@@ -32,20 +34,20 @@ void lu_fat(shared[] double *A, long n)
 		max = n - 1;
 	}
 
-	upc_forall(int k = 0; k < n; k++; continue)
+	for (int k = 0; k < n; k++)
 	{
 		if (k >= min && k <= max)
 		{
-			upc_forall(int j = k + 1; j < n; j++; continue)
+			for (int j = k + 1; j < n; j++)
 			{
 				A[(n * j) + k] = A[(n * j) + k] / A[(k * n) + k];
 			}
 		}
 		upc_barrier;
 
-		upc_forall(int i = (((k + 1) > min) ? (k + 1) : min); i <= max; i++; continue)
+		for (int i = (((k + 1) > min) ? (k + 1) : min); i <= max; i++)
 		{
-			upc_forall(int j = k + 1; j < n; j++; continue)
+			for (int j = k + 1; j < n; j++)
 			{
 
 				A[(i * n) + j] = A[(i * n) + j] - (A[(i * n) + k] * A[(k * n) + j]);
@@ -138,17 +140,36 @@ void factorize(shared[] double *A, long n)
 	printmatrix(a1, n);
 }
 
-int main()
+void init_params(int argc, char *argv[])
 {
-	long matrix_size;
-	matrix_size = 10;
-	clock_t begin, end;
-	double time_spent;
+	int param;
+	while ((param = getopt(argc, argv, "m:h")) != -1)
+	{
+		switch (param)
+		{
+		case 'm':
+			matrix_size = strtol(optarg, NULL, 10);
+			break;
+
+		case 'h':
+			printf("Execução:   upcrun -n X ./a.out -m <ordem_da_matrix>\n");
+			
+			exit(EXIT_SUCCESS);
+			break;
+
+		default:
+			exit(EXIT_FAILURE);
+		}
+	}
+}
+
+int main(int argc, char **argv)
+{
+
+	init_params(argc, argv);
+
 	getMatrix(matrix_size);
-	begin = clock();
 	lu_fat(m, matrix_size);
-	end = clock();
-	time_spent = ((double)(end - begin)) / CLOCKS_PER_SEC;
 	if (MYTHREAD == 0)
 	{
 		factorize(m, matrix_size);
